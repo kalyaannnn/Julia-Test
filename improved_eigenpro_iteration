@@ -1,0 +1,45 @@
+include("kernel.jl")
+include("top_q_eigensystems.jl")
+include("initialize_kernel_method.jl")
+
+using LinearAlgebra
+using Random
+
+function iterative_process(X, y, alpha, q, η, m, s, kernel_func, max_iter)
+
+    n = size(X, 1)
+
+    r = initialize_kernel_method(X, s)
+    Σ, V = calculate_top_eigensystem(X, r, q, kernel_func)
+    D  = (I - q * inv(Σ)) * inv(Σ)
+
+    # Initializing alpha (Model Parameters)
+    alpha = zeros(n)
+
+   for t in 1:max_iter
+    batch_indices = sample(1:n, m, replace = False)
+    x_t = X[batch_indices, :]
+    y_t = y[batch_indices]
+
+    # Calculate predictions on the mini batch_indices
+    f_xt = [sum(alpha[i] * kernel_func(X[i, :], xtj) for i in 1:n) for xtj in eachrow(x_t)]
+
+    # Update sampled co-ordinate block corresponding to the mini batch
+    alpha_t = alpha[batch_indices]
+    aplha_t .-=  η * (2/m) * (f_xt .- yt)
+
+    # Evaluate the feature map on the mini batch
+    φ_xt = [kernel_func(X[rk, :], xtj) for rk in r, xtj in eachrow(xt)]
+
+    # Update fixed coordinate block alpha_r to apply Pq
+    alpha_r = alpha[r]
+    alpha_r .+= η * (2/m) * sum((f_xt[i] - y_t[i]) * V * D * V' * φ_xt[:, i] for i in 1:m)
+
+    # Update the model Parameters
+    alpha[batch_indices] = alpha_t
+    alpha[r] = alpha_r
+   end
+   return alpha
+
+
+
